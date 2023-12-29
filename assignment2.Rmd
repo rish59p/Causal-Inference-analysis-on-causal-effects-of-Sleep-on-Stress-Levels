@@ -1,0 +1,608 @@
+---
+title: "Does Sleep Causally affect Stress?"
+subtitle: "CME Assignment II"
+author: "Rishabh Patil | 2021A7PS0464H"
+layout: page
+output:
+  pdf_document: 
+    includes:
+      in_header: "wrap-code.tex"
+    toc: yes
+    fig_caption: yes
+    number_sections: yes
+    keep_tex: yes
+    highlight: espresso
+    fig_crop: no
+  html_document: 
+    toc: yes
+    highlight: textmate
+    theme: simplex
+    fig_width: 10
+    fig_height: 7
+    fig_caption: yes
+  html_notebook: 
+    toc: yes
+    highlight: espresso
+    theme: united
+    fig_caption: yes
+    number_sections: yes
+editor_options:
+  chunk_output_type: inline
+  markdown: 
+    wrap: 72
+---
+
+```{r LaTex Wrap, include=FALSE}
+knitr::opts_chunk$set(tidy.opts = list(width.cutoff = 60), tidy = TRUE)
+```
+
+```{r}
+library(readr)
+```
+
+# Research Question
+
+*Primary question:* Does Sleep Stress Levels of Students? We will study
+the data collected from various volunteers and analyze the causal
+relation between sleep an stress.
+
+*Hypothesis:* Lower hours of sleep and lower sleep quality leads to high
+stress levels.
+
+The data we use has:
+
+1.  Anxiety Level (GAD-7)
+
+2.  Self Esteem (Rosenberg Self Esteem Scale)
+
+3.  Mental Health History (0-1)
+
+4.  Depression(in accordance with PHQ-9)
+
+5.  Headache
+
+6.  [*Sleep Quality*]{.underline} [treatment 1]
+
+7.  Basic Needs
+
+8.  Blood Pressure(low)
+
+9.  Academic Performance
+
+10. Study Load
+
+11. Teacher Student Relationship
+
+12. Future Career Concerns
+
+13. Extra Cirricular Activities
+
+14. Bullying
+
+15. [**Stress Level**]{.smallcaps} outcome[]
+
+## What does science say about the correlation of sleep and stress?
+
+Not getting enough sleep can cause a negative mood, low energy,
+difficulty concentrating, and a general inability to function as usual.
+Lack of sleep may have severe consequences in some circumstances, such
+as if a person is driving or operating heavy machinery when tired. The
+occasional night of poor sleep is unlikely to cause harm, but persistent
+sleep deprivation can increase the risk of several chronic health
+conditions.[[1](https://www.medicalnewstoday.com/articles/322994#reducing-stress)]
+
+Research suggests that the relationship between sleep and mental health
+is complex. While lack of sleep has long been known to be a consequence
+of many psychiatric conditions, more recent views suggest that lack of
+sleep can also play a causal role in both the development and
+maintenance of different mental health
+problems.[[2](https://www.verywellmind.com/how-sleep-affects-mental-health-4783067)]
+
+# DAG Analysis
+
+From our data-set:
+
+```{r ImportData}
+ssdata <- read_csv("R:/Sem V/Comp Methods For Econ/Assignment-II/Data/StressLevelDataset.csv")
+colnames(ssdata)<-tolower(gsub(" ","_",colnames(ssdata)))
+head(ssdata)
+```
+
+## Deciding the DAG edges
+
+```{r}
+library(dagitty)
+library(ggdag)
+library(ggplot2)
+
+dag<-dagify(
+  STRESS ~ ANXIETY + SELF_ESTEEM + DEPRESSION + HEADACHE + SLEEP_QUALITY + BASIC_NEEDS + STUDY_LOAD + TEACHER_STUDENT_RELATION + FUTURE_CAREER_CONCERNS + BULLYING +LIVING_CONDITIONS,
+  SLEEP_QUALITY ~ ANXIETY + HEADACHE + STUDY_LOAD + EXTRACIRRICULAR,
+  ANXIETY ~ SELF_ESTEEM + MENTAL_HEALTH_HISTORY  + BULLYING,
+  DEPRESSION ~ MENTAL_HEALTH_HISTORY+ACADEMIC_PERFORMANCE + STUDY_LOAD + FUTURE_CAREER_CONCERNS + BULLYING,
+  ACADEMIC_PERFORMANCE ~ STUDY_LOAD+TEACHER_STUDENT_RELATION,
+
+  exposure = "SLEEP_QUALITY",
+  outcome = "STRESS",
+  labels = c(STRESS="STRESS",
+           ANXIETY="ANXIETY",
+           SELF_ESTEEM="SELF_ESTEEM",
+           MENTAL_HEALTH_HISTORY="MENTAL_HEALTH_HISTORY",
+           DEPRESSION="DEPRESSION",
+           HEADACHE="HEADACHE",
+           SLEEP_QUALITY="SLEEP_QUALITY",
+           BASIC_NEEDS="BASIC_NEEDS",
+           ACADEMIC_PERFORMANCE="ACADEMIC_PERFORMANCE",
+           STUDY_LOAD="STUDY_LOAD",
+           TEACHER_STUDENT_RELATION="TEACHER_STUDENT_RELATION",
+           FUTURE_CAREER_CONCERNS="FUTURE_CAREER_CONCERNS",
+           EXTRACIRRICULAR="EXTRACIRRICULAR",
+           BULLYING="BULLYING",
+           LIVING_CONDITIONS="LIVING_CONDITIONS"
+           )
+)
+```
+
+```{r fig.width=10, fig.height=8}
+  ggdag_status(dag,text = FALSE)+
+    geom_dag_label_repel(aes(label = label), colour = "black", show.legend = FALSE)+
+    geom_dag_edges_arc(edge_color = "red", curvature = 0) +
+    theme_dag()
+
+```
+
+The backdoors are:(confounders)
+
+```{r}
+adjustmentSets(dag)
+```
+
+```{r fig.width=10,fig.height=8}
+ggdag_adjustment_set(dag,shadow = TRUE,text=FALSE) + geom_dag_label_repel(aes(label = label), colour = "black", show.legend = FALSE)+theme_dag()
+```
+
+```{r fig.width=10,fig.height=8}
+ggdag_collider(dag,text=FALSE) + geom_dag_label_repel(aes(label = label), colour = "black", show.legend = FALSE)+theme_dag()
+```
+
+Therefore after blocking the confounders and the colliders we need to
+match on the following covariates: `SELF_ESTEEM`, `BASIC_NEEDS`,
+`FUTURE_CAREER_CONCERNS`, `BULLYING`,`LIVING CONDITIONS`
+
+# Checking the distribution of covariates for control and Treatment
+
+To check for the effects of Sleep duration on stress, we need to set
+some thresholds on sleep duration.
+
+```{r}
+print(mean(ssdata$sleep_quality))
+print(median(ssdata$sleep_quality))
+```
+
+So we categorize sleep into 2 categories: - good: \>2.5hrs - bad:
+\<=2.5hrs
+
+## t-test for covariates and outcome:
+
+The p-value estimates for the covariates in the whole data set are:
+
+1.  Self Esteem:
+
+```{r}
+print(t.test(ssdata$self_esteem[ssdata$sleep_quality>2.5],ssdata$self_esteem[ssdata$sleep_quality<=2.5])$p.value)
+```
+
+2.  Basic Needs:
+
+```{r}
+print(t.test(ssdata$basic_needs[ssdata$sleep_quality>2.5],ssdata$basic_needs[ssdata$sleep_quality<=2.5])$p.value)
+```
+
+3.  Future Career Concerns:
+
+```{r}
+print(t.test(ssdata$future_career_concerns[ssdata$sleep_quality>2.5],ssdata$future_career_concerns[ssdata$sleep_quality<=2.5])$p.value)
+```
+
+4.  BUllying:
+
+```{r}
+print(t.test(ssdata$bullying[ssdata$sleep_quality>2.5],ssdata$bullying[ssdata$sleep_quality<=2.5])$p.value)
+```
+
+5.  Living Conditions
+
+```{r}
+print(t.test(ssdata$living_conditions[ssdata$sleep_quality>2.5],ssdata$living_conditions[ssdata$sleep_quality<=2.5])$p.value)
+```
+
+## Plotting the results:
+
+**Factoring the treatment**
+
+```{r}
+ssdata$sleep_quality_treatment<-ifelse(ssdata$sleep_quality>2.5,1,0)
+```
+
+Plots:
+
+```{r}
+ggplot(ssdata, aes(x = ssdata$self_esteem, fill = factor(ssdata$sleep_quality_treatment))) + geom_density(position="identity", alpha=0.6) +
+    scale_fill_brewer(palette="Dark2") + ggtitle("Density plot of Self Esteem, by group") +
+    scale_x_continuous(name = "Self Esteem") +
+    scale_y_continuous(name = "Density") + theme(plot.title = element_text(size = 14, face =
+                                                                               "bold"), text = element_text(size = 12)) + guides(fill=guide_legend(title=NULL))+
+    scale_fill_discrete(labels=c("Control - SleepQ<=2.5", "Treatment - Sleep>2.5"))
+```
+
+```{r}
+ggplot(ssdata, aes(x = ssdata$basic_needs, fill = factor(ssdata$sleep_quality_treatment))) + geom_density(position="identity", alpha=0.6) +
+    scale_fill_brewer(palette="Dark2") + ggtitle("Density plot of Basic Needs, by group") +
+    scale_x_continuous(name = "Basic Needs") +
+    scale_y_continuous(name = "Density") + theme(plot.title = element_text(size = 14, face =
+                                                                               "bold"), text = element_text(size = 12)) + guides(fill=guide_legend(title=NULL))+
+    scale_fill_discrete(labels=c("Control - SleepQ<=2.5", "Treatment - Sleep>2.5"))
+```
+
+```{r}
+ggplot(ssdata, aes(x = ssdata$future_career_concerns, fill = factor(ssdata$sleep_quality_treatment))) + geom_density(position="identity", alpha=0.6) +
+    scale_fill_brewer(palette="Dark2") + ggtitle("Density plot of Future Concerns, by group") +
+    scale_x_continuous(name = "Future Concerns") +
+    scale_y_continuous(name = "Density") + theme(plot.title = element_text(size = 14, face =
+                                                                               "bold"), text = element_text(size = 12)) + guides(fill=guide_legend(title=NULL))+
+    scale_fill_discrete(labels=c("Control - SleepQ<=2.5", "Treatment - Sleep>2.5"))
+```
+
+```{r}
+ggplot(ssdata, aes(x = ssdata$bullying, fill = factor(ssdata$sleep_quality_treatment))) + geom_density(position="identity", alpha=0.6) +
+    scale_fill_brewer(palette="Dark2") + ggtitle("Density plot of Bullying, by group") +
+    scale_x_continuous(name = "Bullying") +
+    scale_y_continuous(name = "Density") + theme(plot.title = element_text(size = 14, face =
+                                                                               "bold"), text = element_text(size = 12)) + guides(fill=guide_legend(title=NULL))+
+    scale_fill_discrete(labels=c("Control - SleepQ<=2.5", "Treatment - Sleep>2.5"))
+```
+
+```{r}
+ggplot(ssdata, aes(x = ssdata$living_conditions, fill = factor(ssdata$sleep_quality_treatment))) + geom_density(position="identity", alpha=0.6) +
+    scale_fill_brewer(palette="Dark2") + ggtitle("Density plot of Living Conditions, by group") +
+    scale_x_continuous(name = "Living Conditions") +
+    scale_y_continuous(name = "Density") + theme(plot.title = element_text(size = 14, face =
+                                                                               "bold"), text = element_text(size = 12)) + guides(fill=guide_legend(title=NULL))+
+    scale_fill_discrete(labels=c("Control - SleepQ<=2.5", "Treatment - Sleep>2.5"))
+```
+
+***Findings:*** We find that there is a variation in covariates which
+needs to be mathced in order to properly uncerstand the causal effect of
+treatment on the outcome.(extremely low p-values)
+
+# Matching
+
+```{r}
+formula<-sleep_quality_treatment ~ self_esteem + basic_needs + future_career_concerns + bullying + living_conditions
+```
+
+```{r}
+regmodel<- glm(sleep_quality_treatment ~ self_esteem + basic_needs + future_career_concerns + bullying + living_conditions,data=ssdata,family="binomial")
+ssdata$propscore<-predict(regmodel,newdata=ssdata,type="response")
+head(ssdata$propscore)
+```
+
+## Nearest Neighbour:(without replacement)
+
+```{r}
+library(MatchIt)
+m_without_replacement = matchit(sleep_quality_treatment ~ self_esteem + basic_needs + future_career_concerns + bullying + living_conditions, method = "nearest", data = ssdata)
+m_without_replacement_df<-match.data(m_without_replacement)
+summary(m_without_replacement)
+```
+
+## Nearest Neighbour: (With replacement)
+
+```{r}
+m_with_replacement = matchit(sleep_quality_treatment ~ self_esteem + basic_needs + future_career_concerns + bullying + living_conditions, method = "nearest", data = ssdata,replace=TRUE)
+m_with_replacement_df<-match.data(m_with_replacement)
+summary(m_with_replacement)
+```
+
+## Nearest Neighbour method: (With replacement and caliper)
+
+```{r}
+m_caliper = matchit(sleep_quality_treatment ~ self_esteem + basic_needs + future_career_concerns + bullying + living_conditions, method = "nearest", data = ssdata,replace=TRUE,caliper=0.03)
+m_caliper_df<-match.data(m_with_replacement)
+summary(m_caliper)
+```
+
+# Post Match Plotting:
+
+## without replacement:
+
+### t-tests:
+
+1.  Self Esteem:
+
+```{r}
+print(t.test(m_without_replacement_df$self_esteem[m_without_replacement_df$sleep_quality>2.5],m_without_replacement_df$self_esteem[m_without_replacement_df$sleep_quality<=2.5])$p.value)
+```
+
+2.  Basic Needs:
+
+```{r}
+print(t.test(m_without_replacement_df$basic_needs[m_without_replacement_df$sleep_quality>2.5],m_without_replacement_df$basic_needs[m_without_replacement_df$sleep_quality<=2.5])$p.value)
+```
+
+3.  Future Career Concerns:
+
+```{r}
+print(t.test(m_without_replacement_df$future_career_concerns[m_without_replacement_df$sleep_quality>2.5],m_without_replacement_df$future_career_concerns[m_without_replacement_df$sleep_quality<=2.5])$p.value)
+```
+
+4.  BUllying:
+
+```{r}
+print(t.test(m_without_replacement_df$bullying[m_without_replacement_df$sleep_quality>2.5],m_without_replacement_df$bullying[m_without_replacement_df$sleep_quality<=2.5])$p.value)
+```
+
+5.  Living Conditions
+
+```{r}
+print(t.test(m_without_replacement_df$living_conditions[m_without_replacement_df$sleep_quality>2.5],m_without_replacement_df$living_conditions[m_without_replacement_df$sleep_quality<=2.5])$p.value)
+```
+
+```{r}
+ggplot(m_without_replacement_df, aes(x = m_without_replacement_df$self_esteem, fill = factor(m_without_replacement_df$sleep_quality_treatment))) + geom_density(position="identity", alpha=0.6) +
+    scale_fill_brewer(palette="Dark2") + ggtitle("Density plot of Self Esteem, by group[Matched]") +
+    scale_x_continuous(name = "Self Esteem") +
+    scale_y_continuous(name = "Density") + theme(plot.title = element_text(size = 14, face =
+                                                                               "bold"), text = element_text(size = 12)) + guides(fill=guide_legend(title=NULL))+
+    scale_fill_discrete(labels=c("Control - SleepQ<=2.5", "Treatment - Sleep>2.5"))
+```
+
+```{r}
+ggplot(m_without_replacement_df, aes(x = m_without_replacement_df$basic_needs, fill = factor(m_without_replacement_df$sleep_quality_treatment))) + geom_density(position="identity", alpha=0.6) +
+    scale_fill_brewer(palette="Dark2") + ggtitle("Density plot of Basic Needs, by group[Matched]") +
+    scale_x_continuous(name = "Basic Needs") +
+    scale_y_continuous(name = "Density") + theme(plot.title = element_text(size = 14, face =
+                                                                               "bold"), text = element_text(size = 12)) + guides(fill=guide_legend(title=NULL))+
+    scale_fill_discrete(labels=c("Control - SleepQ<=2.5", "Treatment - Sleep>2.5"))
+```
+
+```{r}
+ggplot(m_without_replacement_df, aes(x = m_without_replacement_df$future_career_concerns, fill = factor(m_without_replacement_df$sleep_quality_treatment))) + geom_density(position="identity", alpha=0.6) +
+    scale_fill_brewer(palette="Dark2") + ggtitle("Density plot ofFuture Concerns, by group[Matched]") +
+    scale_x_continuous(name = "Future Concerns") +
+    scale_y_continuous(name = "Density") + theme(plot.title = element_text(size = 14, face =
+                                                                               "bold"), text = element_text(size = 12)) + guides(fill=guide_legend(title=NULL))+
+    scale_fill_discrete(labels=c("Control - SleepQ<=2.5", "Treatment - Sleep>2.5"))
+```
+
+```{r}
+ggplot(m_without_replacement_df, aes(x = m_without_replacement_df$bullying, fill = factor(m_without_replacement_df$sleep_quality_treatment))) + geom_density(position="identity", alpha=0.6) +
+    scale_fill_brewer(palette="Dark2") + ggtitle("Density plot of Bullying, by group[Matched]") +
+    scale_x_continuous(name = "Bullying") +
+    scale_y_continuous(name = "Density") + theme(plot.title = element_text(size = 14, face =
+                                                                               "bold"), text = element_text(size = 12)) + guides(fill=guide_legend(title=NULL))+
+    scale_fill_discrete(labels=c("Control - SleepQ<=2.5", "Treatment - Sleep>2.5"))
+```
+
+```{r}
+ggplot(m_without_replacement_df, aes(x = m_without_replacement_df$living_conditions, fill = factor(m_without_replacement_df$sleep_quality_treatment))) + geom_density(position="identity", alpha=0.6) +
+    scale_fill_brewer(palette="Dark2") + ggtitle("Density plot of Living Conditions, by group[Matched]") +
+    scale_x_continuous(name = "Living Conditions") +
+    scale_y_continuous(name = "Density") + theme(plot.title = element_text(size = 14, face =
+                                                                               "bold"), text = element_text(size = 12)) + guides(fill=guide_legend(title=NULL))+
+    scale_fill_discrete(labels=c("Control - SleepQ<=2.5", "Treatment - SleepQ>2.5"))
+
+```
+
+## with replacement
+
+### t-tests:
+
+1.  Self Esteem:
+
+```{r}
+print(t.test(m_with_replacement_df$self_esteem[m_with_replacement_df$sleep_quality>2.5][1:137],m_with_replacement_df$self_esteem[m_with_replacement_df$sleep_quality<=2.5][1:137])$p.value)
+```
+
+2.  Basic Needs:
+
+```{r}
+print(t.test(m_with_replacement_df$basic_needs[m_with_replacement_df$sleep_quality>2.5][1:137],m_with_replacement_df$basic_needs[m_with_replacement_df$sleep_quality<=2.5][1:137])$p.value)
+```
+
+3.  Future Career Concerns:
+
+```{r}
+print(t.test(m_with_replacement_df$future_career_concerns[m_with_replacement_df$sleep_quality>2.5][1:137],m_with_replacement_df$future_career_concerns[m_with_replacement_df$sleep_quality<=2.5][1:137])$p.value)
+```
+
+4.  BUllying:
+
+```{r}
+print(t.test(m_with_replacement_df$bullying[m_with_replacement_df$sleep_quality>2.5][1:137],m_with_replacement_df$bullying[m_with_replacement_df$sleep_quality<=2.5][1:137])$p.value)
+```
+
+5.  Living Conditions
+
+```{r}
+print(t.test(m_with_replacement_df$living_conditions[m_with_replacement_df$sleep_quality>2.5][1:137],m_with_replacement_df$living_conditions[m_with_replacement_df$sleep_quality<=2.5][1:137])$p.value)
+```
+
+```{r}
+ggplot(m_with_replacement_df, aes(x = m_with_replacement_df$self_esteem, fill = factor(m_with_replacement_df$sleep_quality_treatment))) + geom_density(position="identity", alpha=0.6) +
+    scale_fill_brewer(palette="Dark2") + ggtitle("Density plot of Self Esteem, by group[Matched]") +
+    scale_x_continuous(name = "Self Esteem") +
+    scale_y_continuous(name = "Density") + theme(plot.title = element_text(size = 14, face =
+                                                                               "bold"), text = element_text(size = 12)) + guides(fill=guide_legend(title=NULL))+
+    scale_fill_discrete(labels=c("Control - SleepQ<=2.5", "Treatment - Sleep>2.5"))
+```
+
+```{r}
+ggplot(m_with_replacement_df, aes(x = m_with_replacement_df$basic_needs, fill = factor(m_with_replacement_df$sleep_quality_treatment))) + geom_density(position="identity", alpha=0.6) +
+    scale_fill_brewer(palette="Dark2") + ggtitle("Density plot of Basic Needs, by group[Matched]") +
+    scale_x_continuous(name = "Basic Needs") +
+    scale_y_continuous(name = "Density") + theme(plot.title = element_text(size = 14, face =
+                                                                               "bold"), text = element_text(size = 12)) + guides(fill=guide_legend(title=NULL))+
+    scale_fill_discrete(labels=c("Control - SleepQ<=2.5", "Treatment - Sleep>2.5"))
+```
+
+```{r}
+ggplot(m_with_replacement_df, aes(x = m_with_replacement_df$future_career_concerns, fill = factor(m_with_replacement_df$sleep_quality_treatment))) + geom_density(position="identity", alpha=0.6) +
+    scale_fill_brewer(palette="Dark2") + ggtitle("Density plot ofFuture Concerns, by group[Matched]") +
+    scale_x_continuous(name = "Future Concerns") +
+    scale_y_continuous(name = "Density") + theme(plot.title = element_text(size = 14, face =
+                                                                               "bold"), text = element_text(size = 12)) + guides(fill=guide_legend(title=NULL))+
+    scale_fill_discrete(labels=c("Control - SleepQ<=2.5", "Treatment - Sleep>2.5"))
+```
+
+```{r}
+ggplot(m_with_replacement_df, aes(x = m_with_replacement_df$bullying, fill = factor(m_with_replacement_df$sleep_quality_treatment))) + geom_density(position="identity", alpha=0.6) +
+    scale_fill_brewer(palette="Dark2") + ggtitle("Density plot of Bullying, by group[Matched]") +
+    scale_x_continuous(name = "Bullying") +
+    scale_y_continuous(name = "Density") + theme(plot.title = element_text(size = 14, face =
+                                                                               "bold"), text = element_text(size = 12)) + guides(fill=guide_legend(title=NULL))+
+    scale_fill_discrete(labels=c("Control - SleepQ<=2.5", "Treatment - Sleep>2.5"))
+```
+
+```{r}
+ggplot(m_with_replacement_df, aes(x = m_with_replacement_df$living_conditions, fill = factor(m_with_replacement_df$sleep_quality_treatment))) + geom_density(position="identity", alpha=0.6) +
+    scale_fill_brewer(palette="Dark2") + ggtitle("Density plot of Living Conditions, by group[Matched]") +
+    scale_x_continuous(name = "Living Conditions") +
+    scale_y_continuous(name = "Density") + theme(plot.title = element_text(size = 14, face =
+                                                                               "bold"), text = element_text(size = 12)) + guides(fill=guide_legend(title=NULL))+
+    scale_fill_discrete(labels=c("Control - SleepQ<=2.5", "Treatment - SleepQ>2.5"))
+```
+
+## with caliper
+
+### t-tests:
+
+1.  Self Esteem:
+
+```{r}
+print(t.test(m_caliper_df$self_esteem[m_caliper_df$sleep_quality>2.5][1:137],m_caliper_df$self_esteem[m_caliper_df$sleep_quality<=2.5][1:137])$p.value)
+```
+
+2.  Basic Needs:
+
+```{r}
+print(t.test(m_caliper_df$basic_needs[m_caliper_df$sleep_quality>2.5][1:137],m_caliper_df$basic_needs[m_caliper_df$sleep_quality<=2.5][1:137])$p.value)
+```
+
+3.  Future Career Concerns:
+
+```{r}
+print(t.test(m_caliper_df$future_career_concerns[m_caliper_df$sleep_quality>2.5],m_caliper_df$future_career_concerns[m_caliper_df$sleep_quality<=2.5])$p.value)
+```
+
+4.  BUllying:
+
+```{r}
+print(t.test(m_caliper_df$bullying[m_caliper_df$sleep_quality>2.5],m_caliper_df$bullying[m_caliper_df$sleep_quality<=2.5])$p.value)
+```
+
+5.  Living Conditions
+
+```{r}
+print(t.test(m_caliper_df$living_conditions[m_caliper_df$sleep_quality>2.5],m_caliper_df$living_conditions[m_caliper_df$sleep_quality<=2.5])$p.value)
+```
+
+```{r}
+ggplot(m_caliper_df, aes(x = m_caliper_df$self_esteem, fill = factor(m_caliper_df$sleep_quality_treatment))) + geom_density(position="identity", alpha=0.6) +
+    scale_fill_brewer(palette="Dark2") + ggtitle("Density plot of Self Esteem, by group[Matched]") +
+    scale_x_continuous(name = "Self Esteem") +
+    scale_y_continuous(name = "Density") + theme(plot.title = element_text(size = 14, face =
+                                                                               "bold"), text = element_text(size = 12)) + guides(fill=guide_legend(title=NULL))+
+    scale_fill_discrete(labels=c("Control - SleepQ<=2.5", "Treatment - Sleep>2.5"))
+```
+
+```{r}
+ggplot(m_caliper_df, aes(x = m_caliper_df$basic_needs, fill = factor(m_caliper_df$sleep_quality_treatment))) + geom_density(position="identity", alpha=0.6) +
+    scale_fill_brewer(palette="Dark2") + ggtitle("Density plot of Basic Needs, by group[Matched]") +
+    scale_x_continuous(name = "Basic Needs") +
+    scale_y_continuous(name = "Density") + theme(plot.title = element_text(size = 14, face =
+                                                                               "bold"), text = element_text(size = 12)) + guides(fill=guide_legend(title=NULL))+
+    scale_fill_discrete(labels=c("Control - SleepQ<=2.5", "Treatment - Sleep>2.5"))
+```
+
+```{r}
+ggplot(m_caliper_df, aes(x = m_caliper_df$future_career_concerns, fill = factor(m_caliper_df$sleep_quality_treatment))) + geom_density(position="identity", alpha=0.6) +
+    scale_fill_brewer(palette="Dark2") + ggtitle("Density plot ofFuture Concerns, by group[Matched]") +
+    scale_x_continuous(name = "Future Concerns") +
+    scale_y_continuous(name = "Density") + theme(plot.title = element_text(size = 14, face =
+                                                                               "bold"), text = element_text(size = 12)) + guides(fill=guide_legend(title=NULL))+
+    scale_fill_discrete(labels=c("Control - SleepQ<=2.5", "Treatment - Sleep>2.5"))
+```
+
+```{r}
+ggplot(m_caliper_df, aes(x = m_caliper_df$bullying, fill = factor(m_caliper_df$sleep_quality_treatment))) + geom_density(position="identity", alpha=0.6) +
+    scale_fill_brewer(palette="Dark2") + ggtitle("Density plot of Bullying, by group[Matched]") +
+    scale_x_continuous(name = "Bullying") +
+    scale_y_continuous(name = "Density") + theme(plot.title = element_text(size = 14, face =
+                                                                               "bold"), text = element_text(size = 12)) + guides(fill=guide_legend(title=NULL))+
+    scale_fill_discrete(labels=c("Control - SleepQ<=2.5", "Treatment - Sleep>2.5"))
+```
+
+```{r}
+ggplot(m_caliper_df, aes(x = m_caliper_df$living_conditions, fill = factor(m_caliper_df$sleep_quality_treatment))) + geom_density(position="identity", alpha=0.6) +
+    scale_fill_brewer(palette="Dark2") + ggtitle("Density plot of Living Conditions, by group[Matched]") +
+    scale_x_continuous(name = "Living Conditions") +
+    scale_y_continuous(name = "Density") + theme(plot.title = element_text(size = 14, face =
+                                                                               "bold"), text = element_text(size = 12)) + guides(fill=guide_legend(title=NULL))+
+    scale_fill_discrete(labels=c("Control - SleepQ<=2.5", "Treatment - SleepQ>2.5"))
+```
+
+# ATE
+
+## without replacement
+
+```{r}
+t.test(m_without_replacement_df$stress_level[m_without_replacement_df$sleep_quality>2.5][1:137],m_without_replacement_df$stress_level[m_without_replacement_df$sleep_quality<=2.5][1:137])
+```
+
+```{r}
+model_ate_no_repl <- lm(stress_level~sleep_quality_treatment,data=m_without_replacement_df)
+summary(model_ate_no_repl)
+```
+
+We see the treatment group : people with sleep quality \>2.5 have a mean
+stress level of 0.45 and the control group has a mean stress level of
+1.6, which is significantly high. Also the intercept in 1.1 units lower
+for our treatment group.
+
+## with replacement
+
+```{r}
+t.test(m_with_replacement_df$stress_level[m_with_replacement_df$sleep_quality>2.5][1:137],m_with_replacement_df$stress_level[m_with_replacement_df$sleep_quality<=2.5][1:137])
+```
+
+```{r}
+model_ate_repl <- lm(stress_level~sleep_quality_treatment,data=m_with_replacement_df)
+summary(model_ate_repl)
+```
+
+We see the treatment group : people with sleep quality \>2.5 have a mean
+stress level of 0.45 and the control group has a mean stress level of
+1.1, which is significantly high. Also the intercept in 0.6 units lower
+for our treatment group.
+
+## with caliper
+
+```{r}
+t.test(m_caliper_df$stress_level[m_caliper_df$sleep_quality>2.5][1:137],m_caliper_df$stress_level[m_caliper_df$sleep_quality<=2.5][1:137])
+```
+
+```{r}
+model_ate_caliper <- lm(stress_level~sleep_quality_treatment,data=m_caliper_df)
+summary(model_ate_caliper)
+```
+
+We see the treatment group : people with sleep quality \>2.5 have a mean
+stress level of 0.45 and the control group has a mean stress level of 1,
+which is significantly high. Also the intercept in 0.6 units lower for
+our treatment group.
+
+# Conclusion
+
+From the above analysis we can show that sleep does causally affect
+stress levels. Lower sleep quality causes higher stress levels.
